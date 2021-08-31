@@ -57,7 +57,7 @@ void compute(int const &resolution, std::unique_ptr<std::unique_ptr<std::unique_
     iRRAM::REAL const distance(REAL(4) / resolution);
     iRRAM::REAL const distance2(distance * distance);
     iRRAM::INTEGER iteration(0), iteration_power2(2);
-    iRRAM::INTEGER iteration_exterior(1), iteration_exterior_next(2048), iteration_interior(1), iteration_interior_next(2);
+    iRRAM::INTEGER iteration_exterior_next(2048), iteration_interior_next(2);
     std::unique_ptr<std::unique_ptr<std::unique_ptr<iRRAM::COMPLEX>[]>[]> storage_exterior;
     std::unique_ptr<std::unique_ptr<std::unique_ptr<iRRAM::POLYNOMIAL>[]>[]> storage_interior;
 
@@ -69,26 +69,25 @@ void compute(int const &resolution, std::unique_ptr<std::unique_ptr<std::unique_
         storage_interior[i] = std::make_unique<std::unique_ptr<iRRAM::POLYNOMIAL>[]>(resolution);
     }
 
-printf("BEGIN: reiteration = %lu\n", reiteration_count++);
-    clock_t start, end;
+//printf("BEGIN: reiteration = %lu\n", reiteration_count++);
+//    clock_t start, end;
 
     while(loop) {
         loop = false;
-printf("iteration_exterior = %s\niteration_iteration_next = %s\niteration_interior = %s\niteration_interior_next = %s\n",
-       swrite(iteration_exterior).c_str(), swrite(iteration_exterior_next).c_str(),
-       swrite(iteration_interior).c_str(), swrite(iteration_interior_next).c_str());
+//printf("iteration_iteration_next = %s\niteration_interior = %s\n",
+//       swrite(iteration_exterior_next).c_str(), swrite(iteration_interior_next).c_str());
 
         for(int i = 0; i < resolution; i++) {
             for(int j = 0; j < resolution; j++) {
                 if(canvas[i][j]) continue;
-printf("working on (%d, %d)...\n", i, j);
+//printf("working on (%d, %d)...\n", i, j);
                 loop = true;
                 auto const c = int_pair_to_COMPLEX(resolution, { i, j }, iteration);
                 bool flag = false;
 
-printf("### EXTERIOR ###\n");
+//printf("### EXTERIOR ###\n");
                 /// EXTERIOR
-                start = clock();
+//                start = clock();
                 auto z = iRRAM::COMPLEX(iRRAM::REAL(0));
                 for(iRRAM::INTEGER iter = 1; iter < iteration_exterior_next; iter = iter + 1) {
                     z = z * z + c;
@@ -100,17 +99,17 @@ printf("### EXTERIOR ###\n");
                         break;
                     }
                 }
-                end = clock();
-printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
-                print_current(resolution, canvas);
+//                end = clock();
+//printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
+//                print_current(resolution, canvas);
                 if(flag) continue;
 
-printf("### INTERIOR ###\n");
+//printf("### INTERIOR ###\n");
                 /// INTERIOR
-                start = clock();
+//                start = clock();
                 auto const P = iRRAM::POLYNOMIAL(2, { c, REAL(0), REAL(1) });
-                auto p = (storage_interior[i][j] ? *storage_interior[i][j] : iRRAM::POLYNOMIAL(1, { REAL(0), REAL(1) }));
-                for(auto iter = iteration_interior; iter < iteration_interior_next; iter = iter + 1) {
+                auto p = iRRAM::POLYNOMIAL(1, { REAL(0), REAL(1) });
+                for(auto iter = 1; iter < iteration_interior_next; iter = iter + 1) {
                     p = iRRAM::composite(p, P);
                     p.coef[1] = REAL(-1);
                     auto const rootv = iRRAM::roots(p);
@@ -127,14 +126,14 @@ printf("### INTERIOR ###\n");
                         }
                     }
                 }
-                end = clock();
-printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
-                print_current(resolution, canvas);
+//                end = clock();
+//printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
+//                print_current(resolution, canvas);
                 if(flag) continue;
 
-printf("### BOUNDARY ###\n");
+//printf("### BOUNDARY ###\n");
                 /// HELPER GRID & BOUNDARY
-                start = clock();
+//                start = clock();
                 bool grid_exterior = false;
                 bool grid_interior = false;
                 for(iRRAM::INTEGER x = 1; x < iteration_power2; x = x + 2) {
@@ -197,17 +196,17 @@ printf("### BOUNDARY ###\n");
                         }
                     }
                 }
-                end = clock();
-printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
-                print_current(resolution, canvas);
+//                end = clock();
+//printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
+//                print_current(resolution, canvas);
             END:;
             }
         }
 
         iteration = iteration + 1;
-        iteration_exterior = iteration_exterior_next;
+        //iteration_exterior = iteration_exterior_next;
         iteration_exterior_next = (iteration_exterior_next << 1);
-        iteration_interior = iteration_interior_next;
+        //iteration_interior = iteration_interior_next;
         iteration_interior_next = (iteration_interior_next + 1);
         iteration_power2 = (iteration_power2 << 1);
     }
@@ -221,17 +220,20 @@ int main(int argc, char *argv[]) {
     std::cout << "Input resolution: ";
     std::cin >> resolution;
 
+    clock_t start, end;
     auto canvas = std::make_unique<std::unique_ptr<std::unique_ptr<iRRAM::INTEGER>[]>[]>(resolution);
     for(int i = 0; i < resolution; i++) {
         canvas[i] = std::make_unique<std::unique_ptr<iRRAM::INTEGER>[]>(resolution);
     }
 
+    start = clock();
     iRRAM::exec(compute, resolution, canvas);
-
+    end = clock();
     for(int j = 0; j < resolution; j++) {
 		for(int i = 0; i < resolution; i++) {
 			std::cout << swrite(*canvas[i][j]) << ' ';
 		} std::cout << '\n';
 	}
+    std::cout << "Elapsed time: " << ((long double)(end - start)) / CLOCKS_PER_SEC << '\n';
 }
 
