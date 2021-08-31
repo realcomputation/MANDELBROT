@@ -1,9 +1,9 @@
 #include <iRRAM/lib.h>
 #include <iRRAMx/polynomial.hpp>
 
+#include <ctime>
 #include <memory>
 #include <set>
-#include <ctime>
 
 void print_current(int resolution, std::unique_ptr<std::unique_ptr<std::unique_ptr<iRRAM::INTEGER>[]>[]> const &canvas) {
     for(int j = 0; j < resolution; j++) {
@@ -16,10 +16,26 @@ void print_current(int resolution, std::unique_ptr<std::unique_ptr<std::unique_p
     }
 }
 
-iRRAM::COMPLEX int_pair_to_COMPLEX(int resolution, std::pair<int, int> const &p) {
+inline iRRAM::REAL iterate_function(iRRAM::INTEGER const &n) {
+    auto const p = power(2, size(n) - 1);
+    return ((n - p) * 2 + 1) / (p * 2);
+}
+
+iRRAM::COMPLEX int_pair_to_COMPLEX(int resolution, std::pair<int, int> const &p, iRRAM::INTEGER const &iteration) {
+    iRRAM::INTEGER l = 1, r = 1;
+    while(r * (r + 1) / 2 <= iteration) r = (r << 1);
+    while(l < r) {
+        auto const m = (l + r) / 2;
+        if(m * (m + 1) / 2 >= iteration) r = m;
+        else l = m + 1;
+    }
+    l = 1;
+    auto const d = r * (r + 1) / 2 - iteration;
+    l += d, r -= d;
+
     return {
-        -2 + iRRAM::REAL(2) / resolution + iRRAM::REAL(4) * p.first / resolution,
-        -2 + iRRAM::REAL(2) / resolution + iRRAM::REAL(4) * p.second / resolution
+            -2 + iRRAM::REAL(4) * p.first / resolution + iRRAM::REAL(4) / resolution * iterate_function(l),
+        -2 + iRRAM::REAL(4) * p.second / resolution + iRRAM::REAL(4) / resolution * iterate_function(r)
     };
 }
 iRRAM::COMPLEX INTEGER_pair_to_COMPLEX(int resolution, std::pair<INTEGER, INTEGER> const &p) {
@@ -40,7 +56,7 @@ void compute(int const &resolution, std::unique_ptr<std::unique_ptr<std::unique_
     bool loop = true;
     iRRAM::REAL const distance(REAL(4) / resolution);
     iRRAM::REAL const distance2(distance * distance);
-    iRRAM::INTEGER iteration_power2(2);
+    iRRAM::INTEGER iteration(0), iteration_power2(2);
     iRRAM::INTEGER iteration_exterior(1), iteration_exterior_next(2048), iteration_interior(1), iteration_interior_next(2);
     std::unique_ptr<std::unique_ptr<std::unique_ptr<iRRAM::COMPLEX>[]>[]> storage_exterior;
     std::unique_ptr<std::unique_ptr<std::unique_ptr<iRRAM::POLYNOMIAL>[]>[]> storage_interior;
@@ -58,19 +74,23 @@ printf("BEGIN: reiteration = %lu\n", reiteration_count++);
 
     while(loop) {
         loop = false;
+printf("iteration_exterior = %s\niteration_iteration_next = %s\niteration_interior = %s\niteration_interior_next = %s\n",
+       swrite(iteration_exterior).c_str(), swrite(iteration_exterior_next).c_str(),
+       swrite(iteration_interior).c_str(), swrite(iteration_interior_next).c_str());
+
         for(int i = 0; i < resolution; i++) {
             for(int j = 0; j < resolution; j++) {
                 if(canvas[i][j]) continue;
 printf("working on (%d, %d)...\n", i, j);
                 loop = true;
-                auto const c = int_pair_to_COMPLEX(resolution, { i, j });
+                auto const c = int_pair_to_COMPLEX(resolution, { i, j }, iteration);
                 bool flag = false;
 
 printf("### EXTERIOR ###\n");
                 /// EXTERIOR
                 start = clock();
-                auto z = (storage_exterior[i][j] ? *storage_exterior[i][j] : COMPLEX(REAL(0)));
-                for(auto iter = iteration_exterior; iter < iteration_exterior_next; iter = iter + 1) {
+                auto z = iRRAM::COMPLEX(iRRAM::REAL(0));
+                for(iRRAM::INTEGER iter = 1; iter < iteration_exterior_next; iter = iter + 1) {
                     z = z * z + c;
                     auto const d2 = real(z) * real(z) + imag(z) * imag(z);
                     if(choose(d2 > 4, d2 < 5) == 1) {
@@ -119,15 +139,17 @@ printf("### BOUNDARY ###\n");
                 bool grid_interior = false;
                 for(iRRAM::INTEGER x = 1; x < iteration_power2; x = x + 2) {
                     for(iRRAM::INTEGER y = 1; y < iteration_power2; y = y + 2) {
-                        auto const cur = INTEGER_pair_to_COMPLEX(resolution, { x, y });
-                        auto const d = cur - c;
-                        auto const d2 = real(d) * real(d) + imag(d) * imag(d);
+                        auto cur = INTEGER_pair_to_COMPLEX(resolution, { x, y });
+                        cur = cur - c;
+                        iRRAM::REAL d2 = real(cur) * real(cur) + imag(cur) * imag(cur);
+
+                        /// Check if point on grid is in exterior
                         if(choose(d2 < distance2, d2 > distance2 / 2) == 1) {
                             bool inner_flag = false;
                             z = REAL(0);
                             for(iRRAM::INTEGER iter = 1; iter < iteration_exterior_next; iter = iter + 1) {
                                 z = z * z + c;
-                                auto const d2 = real(z) * real(z) + imag(z) * imag(z);
+                                d2 = real(z) * real(z) + imag(z) * imag(z);
                                 if(choose(d2 > 4, d2 < 5) == 1) {
                                     grid_exterior = true;
                                     inner_flag = true;
@@ -143,6 +165,8 @@ printf("### BOUNDARY ###\n");
                                 }
                                 else continue;
                             }
+
+                            /// Check if point on grid is in interior
                             auto const P = iRRAM::POLYNOMIAL(2, { cur, REAL(0), REAL(1) });
                             p = iRRAM::POLYNOMIAL(1, { REAL(0), REAL(1) });
                             for(iRRAM::INTEGER iter = 1; iter < iteration_interior_next; iter = iter + 1) {
@@ -180,6 +204,7 @@ printf("Elapsed time: %Lf\n", ((long double)(end - start)) / CLOCKS_PER_SEC);
             }
         }
 
+        iteration = iteration + 1;
         iteration_exterior = iteration_exterior_next;
         iteration_exterior_next = (iteration_exterior_next << 1);
         iteration_interior = iteration_interior_next;
@@ -209,3 +234,4 @@ int main(int argc, char *argv[]) {
 		} std::cout << '\n';
 	}
 }
+
